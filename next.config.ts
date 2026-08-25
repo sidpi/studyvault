@@ -2,7 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ["localhost"], // Add R2 domain here when configured
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**",
+      },
+    ],
   },
   env: {
     SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
