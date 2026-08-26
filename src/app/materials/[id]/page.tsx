@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowDown, BookmarkSimple, FilePdf, MagnifyingGlass, Sparkle } from "@phosphor-icons/react";
 import { useParams } from "next/navigation";
@@ -31,6 +31,8 @@ export default function MaterialPage() {
   const [numPages, setNumPages] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1);
+  const [viewerWidth, setViewerWidth] = useState(760);
+  const viewerRef = useRef<HTMLDivElement>(null);
   const { supabase } = useSupabase();
 
   useEffect(() => {
@@ -67,6 +69,16 @@ export default function MaterialPage() {
     void loadMaterial();
     return () => { mounted = false; };
   }, [params.id, supabase]);
+
+  useEffect(() => {
+    const element = viewerRef.current;
+    if (!element) return;
+    const updateWidth = () => setViewerWidth(element.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   async function toggleBookmark() {
     const { data: userResult } = await supabase.auth.getUser();
@@ -123,7 +135,7 @@ export default function MaterialPage() {
           {saveMessage && <p className="save-message">{saveMessage}</p>}
           <section className="viewer-frame">
             <div className="viewer-toolbar"><span><FilePdf size={17} weight="fill" /> {material.file_name}</span><span>Private preview</span></div>
-            {fileUrl && material.mime_type.includes("pdf") ? <div className="pdf-viewer"><Document file={fileUrl} onLoadSuccess={({ numPages: pages }) => { setNumPages(pages); setPageNumber(1); }} loading={<div className="viewer-placeholder"><Sparkle size={28} weight="fill" /><h2>Loading document...</h2></div>} error={<div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>Unable to load this PDF</h2><p>Check the R2 CORS policy and signed URL configuration.</p></div>}><Page pageNumber={pageNumber} scale={scale} renderAnnotationLayer renderTextLayer /></Document><div className="pdf-controls"><button onClick={() => setPageNumber((page) => Math.max(1, page - 1))} disabled={pageNumber <= 1}>Previous</button><span>Page {pageNumber} of {numPages || "..."}</span><button onClick={() => setPageNumber((page) => Math.min(numPages, page + 1))} disabled={!numPages || pageNumber >= numPages}>Next</button><button onClick={() => setScale((value) => Math.max(.75, value - .1))}>-</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale((value) => Math.min(1.6, value + .1))}>+</button></div></div> : <div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>PDF preview will appear here</h2><p>Upload a file to R2 and configure the server signing variables to preview it.</p></div>}
+            {fileUrl && material.mime_type.includes("pdf") ? <div className="pdf-viewer" ref={viewerRef}><Document file={fileUrl} onLoadSuccess={({ numPages: pages }) => { setNumPages(pages); setPageNumber(1); }} loading={<div className="viewer-placeholder"><Sparkle size={28} weight="fill" /><h2>Loading document...</h2></div>} error={<div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>Unable to load this PDF</h2><p>Check the R2 CORS policy and signed URL configuration.</p></div>}><Page pageNumber={pageNumber} width={Math.max(320, Math.min(viewerWidth - 40, 900)) * scale} renderAnnotationLayer renderTextLayer /></Document><div className="pdf-controls"><button onClick={() => setPageNumber((page) => Math.max(1, page - 1))} disabled={pageNumber <= 1}>Previous</button><span>Page {pageNumber} of {numPages || "..."}</span><button onClick={() => setPageNumber((page) => Math.min(numPages, page + 1))} disabled={!numPages || pageNumber >= numPages}>Next</button><button onClick={() => setScale((value) => Math.max(.75, value - .1))}>-</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale((value) => Math.min(1.6, value + .1))}>+</button></div></div> : <div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>PDF preview will appear here</h2><p>Upload a file to R2 and configure the server signing variables to preview it.</p></div>}
           </section>
         </div>
       </section>
