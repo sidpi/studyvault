@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StudyVault
 
-## Getting Started
+Private study-material portal built with Next.js, Supabase Auth/Postgres, and private Cloudflare R2 storage.
 
-First, run the development server:
+## Local development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. Copy `.env.example` to `.env.local` and provide:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET_NAME`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The R2 variables are server-only. Never rename them with the `NEXT_PUBLIC_` prefix.
 
-## Learn More
+## Validation
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run lint
+npm run build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy to Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Import this repository into Vercel as a Next.js project.
+2. Add the variables above in the Vercel project settings for Production and Preview as needed.
+3. Deploy with the default build command, `npm run build`.
+4. Add `notes.sidcandev.online` as a Vercel domain and point the DNS record to the target shown by Vercel.
+5. In Supabase Authentication settings, add these redirect URLs:
+   - `https://notes.sidcandev.online/**`
+   - `http://localhost:3000/**`
+6. Configure the R2 bucket CORS policy to allow the deployed origin and `http://localhost:3000` for `GET`, `PUT`, and `HEAD`, including the `Content-Type` header.
 
-## Deploy on Vercel
+Keep the R2 bucket private. The application only exposes short-lived signed URLs after authentication and material metadata checks.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Supabase requirements
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The database needs the tables and RLS policies described in `plan.md`, including `profiles`, `subjects`, `categories`, `materials`, `bookmarks`, and `activity_logs`. Promote the first owner profile to `super_admin` through the Supabase SQL editor.
+
+## Main routes
+
+- `/` workspace
+- `/subjects` library
+- `/materials/[id]` reader
+- `/bookmarks` saved materials
+- `/profile` account settings
+- `/admin` admin workspace
+- `/admin/settings` service status
+- `/admin/activity` audit log

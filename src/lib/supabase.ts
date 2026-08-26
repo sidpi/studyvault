@@ -8,14 +8,12 @@ function createClient() {
 
   // If env vars are not set, create a mock client for development
   if (!url || !anonKey) {
-    // @ts-ignore - mock client for development without Supabase credentials
     const mockSupabase = {
       auth: {
         getSession: async () => ({ data: { session: null }, error: null }),
+        getUser: async () => ({ data: { user: null }, error: null }),
         signInWithPassword: async () =>
-          Promise.resolve({
-            data: { session: null, error: { message: "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY." } },
-          }),
+          Promise.resolve({ data: { session: null }, error: { message: "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY." } }),
         signInWithOAuth: async () =>
           Promise.resolve({
             data: { session: null, error: { message: "Supabase not configured" } },
@@ -24,6 +22,8 @@ function createClient() {
           Promise.resolve({
             data: { user: null, session: null, error: { message: "Supabase not configured" } },
           }),
+        resetPasswordForEmail: async () => Promise.resolve({ data: {}, error: { message: "Supabase not configured" } }),
+        updateUser: async () => Promise.resolve({ data: { user: null }, error: { message: "Supabase not configured" } }),
         signOut: async () => Promise.resolve({ data: {}, error: null }),
       },
       from: () => ({
@@ -70,14 +70,15 @@ function createClient() {
           remove: async () => Promise.resolve({ error: null }),
         }),
       },
-    };
+    } as unknown as ReturnType<typeof createBrowserClient>;
     return mockSupabase;
   }
 
   return createBrowserClient(url, anonKey);
 }
 
+const supabase = createClient();
+
 export function useSupabase() {
-  const supabase = createClient();
   return { supabase };
 }
