@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Books, ChartLineUp, FilePdf, GearSix, ShieldCheck, Sparkle, UploadSimple, UsersThree } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Books, ChartLineUp, FilePdf, GearSix, ShieldCheck, Sparkle, UploadSimple, UserPlus, UsersThree } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useSupabase } from "@/lib/supabase";
 
@@ -17,6 +17,8 @@ const actions = [
 export default function AdminPage() {
   const [checking, setChecking] = useState(true);
   const [allowed, setAllowed] = useState(false);
+  const [role, setRole] = useState<"user" | "uploader" | "super_admin" | null>(null);
+  const [pendingRequests, setPendingRequests] = useState(0);
   const router = useRouter();
   const { supabase } = useSupabase();
 
@@ -30,7 +32,15 @@ export default function AdminPage() {
       }
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", userResult.user.id).maybeSingle();
       if (!mounted) return;
-      setAllowed(profile?.role === "uploader" || profile?.role === "super_admin");
+      const currentRole = profile?.role as "user" | "uploader" | "super_admin" | undefined;
+      setRole(currentRole ?? null);
+      setAllowed(currentRole === "uploader" || currentRole === "super_admin");
+      if (currentRole === "super_admin") {
+        const session = await supabase.auth.getSession();
+        const response = await fetch("/api/admin/access-requests?status=pending", { headers: { Authorization: `Bearer ${session.data.session?.access_token ?? ""}` } });
+        const result = await response.json() as { requests?: Array<{ id: string }> };
+        if (response.ok && mounted) setPendingRequests(Array.isArray(result.requests) ? result.requests.length : 0);
+      }
       setChecking(false);
     }
     void checkAccess();
@@ -57,7 +67,19 @@ export default function AdminPage() {
         <div className="content admin-content">
           <p className="eyebrow">Owner workspace</p><h1>Keep the vault<br /><em>useful.</em><span className="coral-dot">.</span></h1><p className="welcome-copy subject-intro">A small set of tools for keeping shared learning materials organised and easy to find.</p>
           <div className="section-heading admin-section-heading"><div><h2>Manage the vault</h2><p>Choose where you want to make an update.</p></div></div>
-          <section className="admin-actions">{actions.map((action) => { const Icon = action.icon; return <Link href={action.href} className="admin-action" key={action.title}><span className={`admin-action-icon ${action.color}`}><Icon size={23} /></span><span><h2>{action.title}</h2><p>{action.description}</p></span><ArrowRight size={18} /></Link>; })}</section>
+          <section className="admin-actions">
+            {role === "super_admin" && (
+              <Link href="/admin/access-requests" className="admin-action">
+                <span className="admin-action-icon coral"><UserPlus size={23} /></span>
+                <span>
+                  <h2>Approve access requests</h2>
+                  <p>{pendingRequests > 0 ? `${pendingRequests} pending request${pendingRequests === 1 ? "" : "s"}` : "No pending requests right now."}</p>
+                </span>
+                <ArrowRight size={18} />
+              </Link>
+            )}
+            {actions.map((action) => { const Icon = action.icon; return <Link href={action.href} className="admin-action" key={action.title}><span className={`admin-action-icon ${action.color}`}><Icon size={23} /></span><span><h2>{action.title}</h2><p>{action.description}</p></span><ArrowRight size={18} /></Link>; })}
+          </section>
           <section className="admin-note"><div className="admin-note-icon"><FilePdf size={21} /></div><div><strong>Private by default</strong><p>Files stay in R2 and are only exposed through short-lived signed URLs.</p></div><ShieldCheck size={21} /></section>
         </div>
       </section>
