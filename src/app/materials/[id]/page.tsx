@@ -13,18 +13,18 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 
 type Material = { title: string; description: string; mime_type: string; file_key: string; file_name: string; subject: string };
 
-const fallbackMaterial: Material = {
-  title: "Electromagnetic Induction",
-  description: "Revision notes covering Faraday's law, Lenz's law, and practical applications.",
+const emptyMaterial: Material = {
+  title: "",
+  description: "",
   mime_type: "application/pdf",
   file_key: "",
-  file_name: "electromagnetic-induction.pdf",
-  subject: "Physics",
+  file_name: "study-material",
+  subject: "Study material",
 };
 
 export default function MaterialPage() {
   const params = useParams<{ id: string }>();
-  const [material, setMaterial] = useState(fallbackMaterial);
+  const [material, setMaterial] = useState(emptyMaterial);
   const [fileUrl, setFileUrl] = useState("");
   const [saved, setSaved] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -129,13 +129,13 @@ export default function MaterialPage() {
         <div className="content reader-content">
           <Link href="/subjects" className="back-link"><ArrowLeft size={15} /> Back to subjects</Link>
           <div className="reader-heading">
-            <div><p className="eyebrow">{material.subject} / {material.mime_type.includes("pdf") ? "PDF" : "Document"}</p><h1>{material.title}<span className="coral-dot">.</span></h1><p className="welcome-copy">{material.description}</p></div>
+            <div><p className="eyebrow">{material.subject ? `${material.subject} / ` : ""}{material.mime_type.includes("pdf") ? "PDF" : "Document"}</p><h1>{material.title || "Loading material..."}<span className="coral-dot">.</span></h1><p className="welcome-copy">{material.description || "Open this material to start studying."}</p></div>
             <div className="reader-actions"><button className={`outline-button ${saved ? "saved-button" : ""}`} onClick={toggleBookmark}><BookmarkSimple size={17} weight={saved ? "fill" : "regular"} /> {saved ? "Saved" : "Save"}</button>{fileUrl ? <a className="primary-button" href={fileUrl} download={material.file_name} onClick={() => { void logDownload(); }}><ArrowDown size={17} /> Download</a> : <button className="primary-button" disabled><ArrowDown size={17} /> Download</button>}</div>
           </div>
           {saveMessage && <p className="save-message">{saveMessage}</p>}
           <section className="viewer-frame">
             <div className="viewer-toolbar"><span><FilePdf size={17} weight="fill" /> {material.file_name}</span><span>Private preview</span></div>
-            {fileUrl && material.mime_type.includes("pdf") ? <div className="pdf-viewer" ref={viewerRef}><Document file={fileUrl} onLoadSuccess={({ numPages: pages }) => { setNumPages(pages); setPageNumber(1); }} loading={<div className="viewer-placeholder"><Sparkle size={28} weight="fill" /><h2>Loading document...</h2></div>} error={<div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>Unable to load this PDF</h2><p>Check the R2 CORS policy and signed URL configuration.</p></div>}><Page pageNumber={pageNumber} width={Math.max(320, Math.min(viewerWidth - 40, 900)) * scale} renderAnnotationLayer renderTextLayer /></Document><div className="pdf-controls"><button onClick={() => setPageNumber((page) => Math.max(1, page - 1))} disabled={pageNumber <= 1}>Previous</button><span>Page {pageNumber} of {numPages || "..."}</span><button onClick={() => setPageNumber((page) => Math.min(numPages, page + 1))} disabled={!numPages || pageNumber >= numPages}>Next</button><button onClick={() => setScale((value) => Math.max(.75, value - .1))}>-</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale((value) => Math.min(1.6, value + .1))}>+</button></div></div> : <div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>PDF preview will appear here</h2><p>Upload a file to R2 and configure the server signing variables to preview it.</p></div>}
+            {fileUrl && material.mime_type.includes("pdf") ? <div className="pdf-viewer" ref={viewerRef}><Document file={fileUrl} onLoadSuccess={({ numPages: pages }) => { setNumPages(pages); setPageNumber(1); }} loading={<div className="viewer-placeholder"><Sparkle size={28} weight="fill" /><h2>Loading document...</h2></div>} error={<div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>Unable to load this PDF</h2><p>Check the R2 CORS policy and signed URL configuration.</p></div>}><Page pageNumber={pageNumber} width={Math.max(320, Math.min(viewerWidth - 40, 900)) * scale} renderAnnotationLayer renderTextLayer /></Document><div className="pdf-controls"><button onClick={() => setPageNumber((page) => Math.max(1, page - 1))} disabled={pageNumber <= 1}>Previous</button><span>Page {pageNumber} of {numPages || "..."}</span><button onClick={() => setPageNumber((page) => Math.min(numPages, page + 1))} disabled={!numPages || pageNumber >= numPages}>Next</button><button onClick={() => setScale((value) => Math.max(.75, value - .1))}>-</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale((value) => Math.min(1.6, value + .1))}>+</button></div></div> : <div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>No preview available</h2><p>This material can be downloaded once a signed link is ready.</p></div>}
           </section>
         </div>
       </section>

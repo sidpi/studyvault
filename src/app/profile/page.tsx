@@ -36,14 +36,13 @@ export default function ProfilePage() {
     event.preventDefault();
     setSaving(true);
     setMessage("");
-    const { data: userResult } = await supabase.auth.getUser();
-    if (!userResult.user) {
-      setMessage("Your session has expired. Please sign in again.");
-      setSaving(false);
-      return;
-    }
-    const { error } = await supabase.from("profiles").update({ display_name: displayName.trim() || null }).eq("id", userResult.user.id);
-    setMessage(error ? error.message : "Profile updated.");
+    const response = await fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ display_name: displayName }),
+    });
+    const result = await response.json() as { message?: string; error?: string };
+    setMessage(response.ok ? (result.message ?? "Profile updated.") : (result.error ?? "Unable to update profile."));
     setSaving(false);
   }
 

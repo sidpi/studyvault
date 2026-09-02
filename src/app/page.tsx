@@ -6,7 +6,9 @@ import {
   ArrowRight,
   BookmarkSimple,
   Books,
+  CalendarBlank,
   CaretDown,
+  CaretRight,
   ChartLineUp,
   Clock,
   FilePdf,
@@ -14,8 +16,11 @@ import {
   GearSix,
   House,
   MagnifyingGlass,
+  Moon,
+  Newspaper,
   Plus,
   Sparkle,
+  Sun,
   UploadSimple,
 } from "@phosphor-icons/react";
 import { useSupabase } from "@/lib/supabase";
@@ -38,7 +43,16 @@ const navItems = [
   { label: "Subjects", icon: Books },
   { label: "Recent", icon: Clock },
   { label: "Bookmarks", icon: BookmarkSimple },
+  { label: "Blog", icon: Newspaper },
 ];
+
+const yearSemester = Array.from({ length: 5 }, (_, index) => ({
+  year: `Year ${index + 1}`,
+  semesters: [
+    { name: "Semester 1", folders: ["Notes", "Reference Books", "Assignments"] },
+    { name: "Semester 2", folders: ["Notes", "Reference Books", "Assignments"] },
+  ],
+}));
 
 export default function Home() {
   const [activeNav, setActiveNav] = useState("Overview");
@@ -49,8 +63,22 @@ export default function Home() {
   const [displayName, setDisplayName] = useState("StudyVault member");
   const [role, setRole] = useState("user");
   const [message, setMessage] = useState("");
+  const [storage, setStorage] = useState<{ objectCount: number; totalBytes: number } | null>(null);
+  const [theme, setTheme] = useState<"light" | "dark">(() =>
+    typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+  );
+  const [openYear, setOpenYear] = useState<number | null>(null);
   const { supabase } = useSupabase();
   const router = useRouter();
+
+  function toggleTheme() {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      window.localStorage.setItem("theme", next);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -104,6 +132,12 @@ export default function Home() {
           })),
         );
       }
+
+      const storageResponse = await fetch("/api/storage");
+      if (storageResponse.ok) {
+        const storageData = await storageResponse.json() as { objectCount: number; totalBytes: number };
+        if (mounted) setStorage(storageData);
+      }
     }
 
     void loadVault();
@@ -152,6 +186,11 @@ export default function Home() {
                     <span>{item.label}</span>
                     <span className="nav-count">3</span>
                   </Link>
+                ) : item.label === "Blog" ? (
+                  <Link className={`side-nav-item ${active ? "active" : ""}`} key={item.label} href="/blog">
+                    <Icon size={19} weight={active ? "fill" : "regular"} />
+                    <span>{item.label}</span>
+                  </Link>
                 ) : <button className={`side-nav-item ${active ? "active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
                   <Icon size={19} weight={active ? "fill" : "regular"} />
                   <span>{item.label}</span>
@@ -175,14 +214,14 @@ export default function Home() {
 
         <div className="sidebar-bottom">
           <div className="storage-card">
-            <div className="storage-heading"><span>Storage used</span><span>2.8 GB</span></div>
-            <div className="storage-track"><span /></div>
-            <p>of 10 GB available</p>
+            <div className="storage-heading"><span>Storage used</span><span>{storage ? `${(storage.totalBytes / 1024 / 1024).toFixed(1)} MB` : "—"}</span></div>
+            <div className="storage-track"><span style={{ width: storage ? `${Math.min(100, (storage.totalBytes / (10 * 1024 * 1024 * 1024)) * 100)}%` : "0%" }} /></div>
+            <p>{storage ? `${storage.objectCount} file${storage.objectCount === 1 ? "" : "s"} in Cloudflare R2` : "Loading storage usage..."}</p>
           </div>
-          <button className="side-nav-item" onClick={() => setActiveNav("Settings")}>
+          <Link className="side-nav-item" href={role === "super_admin" ? "/admin/settings" : "/profile"}>
             <GearSix size={19} />
             <span>Settings</span>
-          </button>
+          </Link>
         </div>
       </aside>
 
@@ -195,6 +234,7 @@ export default function Home() {
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your vault" aria-label="Search your vault" />
               <kbd>⌘ K</kbd>
             </label>
+            <button className="icon-button" onClick={toggleTheme} aria-label="Toggle dark mode">{theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}</button>
             <Link className="icon-button" href={role === "super_admin" ? "/admin/settings" : "/profile"} aria-label="Settings"><GearSix size={19} /></Link>
             <div className="profile-wrap">
               <button className="profile-button" onClick={() => setShowProfile(!showProfile)} onDoubleClick={() => void signOut()} aria-expanded={showProfile} title="Double-click to sign out">
@@ -234,6 +274,42 @@ export default function Home() {
               </article>
             ))}
             {filteredMaterials.length === 0 && <div className="empty-state"><FilePdf size={24} /><p>{query ? `No materials match "${query}".` : "No materials have been added yet."}</p></div>}
+          </section>
+
+          <div className="section-heading">
+            <div><h2>Year · Semester · Subjects</h2><p>Five years of study, organised into notes, reference books, and assignments.</p></div>
+            <CalendarBlank size={22} />
+          </div>
+          <section className="yss-list">
+            {yearSemester.map((year, yearIndex) => {
+              const open = openYear === yearIndex;
+              return (
+                <div className="yss-year" key={year.year}>
+                  <button className="yss-year-heading" onClick={() => setOpenYear(open ? null : yearIndex)} aria-expanded={open}>
+                    {open ? <CaretDown size={17} /> : <CaretRight size={17} />}
+                    <strong>{year.year}</strong>
+                    <span>{year.semesters.length} semesters</span>
+                  </button>
+                  {open && (
+                    <div className="yss-semesters">
+                      {year.semesters.map((semester) => (
+                        <div className="yss-semester" key={semester.name}>
+                          <span className="yss-semester-name">{semester.name}</span>
+                          <div className="yss-folders">
+                            {semester.folders.map((folder) => (
+                              <span className="yss-folder" key={`${semester.name}-${folder}`}>
+                                <FolderSimple size={15} weight="fill" />
+                                <span>{folder}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </section>
 
           <div className="lower-grid">

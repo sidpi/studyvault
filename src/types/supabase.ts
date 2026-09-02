@@ -66,3 +66,16 @@ export type ActivityLog = {
   metadata: Record<string, unknown> | null;
   created_at: string;
 };
+
+export type BlogPostCategory = "news" | "event" | "course" | "competition";
+
+export type BlogPost = {
+  id: string;
+  title: string;
+  category: BlogPostCategory;
+  body: string;
+  link: string | null;
+  author_id: string;
+  author_name: string;
+  created_at: string;
+};
