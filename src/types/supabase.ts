@@ -16,6 +16,8 @@ export type Subject = {
   name: string;
   description: string | null;
   icon: string | null;
+  year: number;
+  semester: number;
   created_at: string;
   updated_at: string;
 };

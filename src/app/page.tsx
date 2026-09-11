@@ -13,6 +13,7 @@ import {
   Clock,
   FilePdf,
   FolderSimple,
+  FolderPlus,
   GearSix,
   House,
   MagnifyingGlass,
@@ -22,9 +23,11 @@ import {
   Sparkle,
   Sun,
   UploadSimple,
+  X,
 } from "@phosphor-icons/react";
-import { useSupabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { useSupabase } from "@/lib/supabase";
+import { createSubject, groupByYear, SEMESTERS, YEARS, semesterLabel, subjectSlug } from "@/lib/library";
 
 type Material = {
   title: string;
@@ -36,30 +39,20 @@ type Material = {
   icon: "pdf" | "ppt";
 };
 
-type Subject = { name: string; count: string; color: string; progress: string };
-
 const navItems = [
   { label: "Overview", icon: House },
-  { label: "Subjects", icon: Books },
   { label: "Recent", icon: Clock },
   { label: "Bookmarks", icon: BookmarkSimple },
   { label: "Blog", icon: Newspaper },
 ];
-
-const yearSemester = Array.from({ length: 5 }, (_, index) => ({
-  year: `Year ${index + 1}`,
-  semesters: [
-    { name: "Semester 1", folders: ["Notes", "Reference Books", "Assignments"] },
-    { name: "Semester 2", folders: ["Notes", "Reference Books", "Assignments"] },
-  ],
-}));
 
 export default function Home() {
   const [activeNav, setActiveNav] = useState("Overview");
   const [query, setQuery] = useState("");
   const [showProfile, setShowProfile] = useState(false);
   const [liveMaterials, setLiveMaterials] = useState<Material[]>([]);
-  const [liveSubjects, setLiveSubjects] = useState<Subject[]>([]);
+  const [subjects, setSubjects] = useState<{ id: string; name: string; year: number; semester: number }[]>([]);
+  const [libraryError, setLibraryError] = useState("");
   const [displayName, setDisplayName] = useState("StudyVault member");
   const [role, setRole] = useState("user");
   const [message, setMessage] = useState("");
@@ -68,8 +61,14 @@ export default function Home() {
     typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light",
   );
   const [openYear, setOpenYear] = useState<number | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [newSubjectYear, setNewSubjectYear] = useState(1);
+  const [newSubjectSemester, setNewSubjectSemester] = useState(1);
+  const [savingSubject, setSavingSubject] = useState(false);
   const { supabase } = useSupabase();
   const router = useRouter();
+  const canManage = role === "uploader" || role === "super_admin";
 
   function toggleTheme() {
     setTheme((current) => {
@@ -97,7 +96,7 @@ export default function Home() {
           .select("title, file_size, mime_type, created_at, subjects(name)")
           .order("created_at", { ascending: false })
           .limit(4),
-        supabase.from("subjects").select("name").order("name").limit(8),
+        supabase.from("subjects").select("id, name, year, semester").order("year").order("semester").order("name"),
       ]);
 
       if (!mounted) return;
@@ -123,14 +122,9 @@ export default function Home() {
       }
 
       if (!subjectResult.error && Array.isArray(subjectResult.data)) {
-        setLiveSubjects(
-          subjectResult.data.map((item: { name: string }, index: number) => ({
-            name: item.name,
-            count: "Ready to explore",
-            color: ["coral", "mint", "blue", "lavender"][index % 4],
-            progress: `${44 + ((index * 13) % 39)}%`,
-          })),
-        );
+        setSubjects(subjectResult.data);
+      } else if (subjectResult.error) {
+        setLibraryError("Run supabase/migrations/0002_year_semester_subjects.sql to enable the year/semester library.");
       }
 
       const storageResponse = await fetch("/api/storage");
@@ -152,6 +146,23 @@ export default function Home() {
     else router.push("/login");
   }
 
+  async function handleCreateSubject(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!newSubjectName.trim() || savingSubject) return;
+    setSavingSubject(true);
+    setMessage("");
+    try {
+      const created = await createSubject(supabase, { name: newSubjectName, year: newSubjectYear, semester: newSubjectSemester });
+      setSubjects((current) => [...current, created].sort((a, b) => a.year - b.year || a.semester - b.semester || a.name.localeCompare(b.name)));
+      setMessage(`"${created.name}" added to Year ${created.year} · ${semesterLabel(created.semester)} with Notes and Reference Books folders.`);
+      setNewSubjectName("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to create the subject.");
+    } finally {
+      setSavingSubject(false);
+    }
+  }
+
   const filteredMaterials = useMemo(
     () =>
       liveMaterials.filter((material) =>
@@ -159,6 +170,8 @@ export default function Home() {
       ),
     [liveMaterials, query],
   );
+
+  const years = useMemo(() => groupByYear(subjects), [subjects]);
 
   return (
     <main className="app-shell">
@@ -174,38 +187,37 @@ export default function Home() {
             const Icon = item.icon;
             const active = activeNav === item.label;
             return (
-              item.label === "Subjects" ? (
-                <Link className={`side-nav-item ${active ? "active" : ""}`} key={item.label} href="/subjects">
+              item.label === "Bookmarks" ? (
+                <Link className={`side-nav-item ${active ? "active" : ""}`} key={item.label} href="/bookmarks">
                   <Icon size={19} weight={active ? "fill" : "regular"} />
                   <span>{item.label}</span>
                 </Link>
-              ) : (
-                item.label === "Bookmarks" ? (
-                  <Link className={`side-nav-item ${active ? "active" : ""}`} key={item.label} href="/bookmarks">
-                    <Icon size={19} weight={active ? "fill" : "regular"} />
-                    <span>{item.label}</span>
-                    <span className="nav-count">3</span>
-                  </Link>
-                ) : item.label === "Blog" ? (
-                  <Link className={`side-nav-item ${active ? "active" : ""}`} key={item.label} href="/blog">
-                    <Icon size={19} weight={active ? "fill" : "regular"} />
-                    <span>{item.label}</span>
-                  </Link>
-                ) : <button className={`side-nav-item ${active ? "active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
+              ) : item.label === "Blog" ? (
+                <Link className={`side-nav-item ${active ? "active" : ""}`} key={item.label} href="/blog">
                   <Icon size={19} weight={active ? "fill" : "regular"} />
                   <span>{item.label}</span>
-                </button>
-              )
+                </Link>
+              ) : <button className={`side-nav-item ${active ? "active" : ""}`} key={item.label} onClick={() => setActiveNav(item.label)}>
+                <Icon size={19} weight={active ? "fill" : "regular"} />
+                <span>{item.label}</span>
+              </button>
             );
           })}
         </nav>
 
         <div className="sidebar-label sidebar-label-spaced">Manage</div>
         <nav className="side-nav" aria-label="Management navigation">
-          <button className="side-nav-item" onClick={() => setActiveNav("Upload materials")}>
-            <UploadSimple size={19} />
-            <span>Upload materials</span>
-          </button>
+          {canManage ? (
+            <Link className="side-nav-item" href="/admin/materials/upload">
+              <UploadSimple size={19} />
+              <span>Upload materials</span>
+            </Link>
+          ) : (
+            <button className="side-nav-item" onClick={() => setActiveNav("Upload materials")}>
+              <UploadSimple size={19} />
+              <span>Upload materials</span>
+            </button>
+          )}
           <button className="side-nav-item" onClick={() => setActiveNav("Activity")}>
             <ChartLineUp size={19} />
             <span>Activity</span>
@@ -255,7 +267,7 @@ export default function Home() {
               <h1>Good morning, {displayName}<span className="coral-dot">.</span></h1>
               <p className="welcome-copy">Pick up where you left off, or find something new to study.</p>
             </div>
-            {(role === "uploader" || role === "super_admin") && <Link className="primary-button" href="/admin/materials/upload"><Plus size={18} weight="bold" /> Add material</Link>}
+            {canManage && <Link className="primary-button" href="/admin/materials/upload"><Plus size={18} weight="bold" /> Add material</Link>}
           </div>
 
           <div className="section-heading">
@@ -277,31 +289,48 @@ export default function Home() {
           </section>
 
           <div className="section-heading">
-            <div><h2>Year · Semester · Subjects</h2><p>Five years of study, organised into notes, reference books, and assignments.</p></div>
-            <CalendarBlank size={22} />
+            <div><h2>Library</h2><p>Material · Year · Semester · Subjects — every subject has Notes and Reference Books folders.</p></div>
+            {canManage && (
+              <button className="primary-button small" onClick={() => setManageOpen((open) => !open)}>
+                <FolderPlus size={16} /> {manageOpen ? "Close" : "Add subject"}
+              </button>
+            )}
           </div>
+          {libraryError && <p className="manage-message">{libraryError}</p>}
+          {manageOpen && canManage && (
+            <form className="upload-form compact-form subject-inline-form" onSubmit={handleCreateSubject}>
+              <label>Name<input value={newSubjectName} onChange={(event) => setNewSubjectName(event.target.value)} placeholder="e.g. Engineering Mathematics" required /></label>
+              <label>Year<select value={newSubjectYear} onChange={(event) => setNewSubjectYear(Number(event.target.value))}>{YEARS.map((year) => <option value={year} key={year}>Year {year}</option>)}</select></label>
+              <label>Semester<select value={newSubjectSemester} onChange={(event) => setNewSubjectSemester(Number(event.target.value))}>{SEMESTERS.map((semester) => <option value={semester} key={semester}>{semesterLabel(semester)}</option>)}</select></label>
+              <button className="primary-button" type="submit" disabled={savingSubject}>{savingSubject ? "Creating..." : <><Plus size={16} /> Create subject</>}</button>
+              <button type="button" className="icon-button" aria-label="Close" onClick={() => setManageOpen(false)}><X size={16} /></button>
+              <small>Notes and Reference Books folders are created automatically.</small>
+            </form>
+          )}
           <section className="yss-list">
-            {yearSemester.map((year, yearIndex) => {
-              const open = openYear === yearIndex;
+            {years.map(({ year, semesters }) => {
+              const open = openYear === year;
+              const yearSubjectCount = semesters.reduce((sum, entry) => sum + entry.subjects.length, 0);
               return (
-                <div className="yss-year" key={year.year}>
-                  <button className="yss-year-heading" onClick={() => setOpenYear(open ? null : yearIndex)} aria-expanded={open}>
+                <div className="yss-year" key={year}>
+                  <button className="yss-year-heading" onClick={() => setOpenYear(open ? null : year)} aria-expanded={open}>
                     {open ? <CaretDown size={17} /> : <CaretRight size={17} />}
-                    <strong>{year.year}</strong>
-                    <span>{year.semesters.length} semesters</span>
+                    <strong>Year {year}</strong>
+                    <span>{yearSubjectCount} subject{yearSubjectCount === 1 ? "" : "s"}</span>
                   </button>
                   {open && (
                     <div className="yss-semesters">
-                      {year.semesters.map((semester) => (
-                        <div className="yss-semester" key={semester.name}>
-                          <span className="yss-semester-name">{semester.name}</span>
+                      {semesters.map(({ semester, subjects: semesterSubjects }) => (
+                        <div className="yss-semester" key={semester}>
+                          <span className="yss-semester-name">{semesterLabel(semester)}</span>
                           <div className="yss-folders">
-                            {semester.folders.map((folder) => (
-                              <span className="yss-folder" key={`${semester.name}-${folder}`}>
+                            {semesterSubjects.map((subject) => (
+                              <Link className="yss-folder" href={`/subjects/${subjectSlug(subject.name)}`} key={subject.id}>
                                 <FolderSimple size={15} weight="fill" />
-                                <span>{folder}</span>
-                              </span>
+                                <span>{subject.name}</span>
+                              </Link>
                             ))}
+                            {semesterSubjects.length === 0 && <span className="no-categories">No subjects yet</span>}
                           </div>
                         </div>
                       ))}
@@ -314,20 +343,10 @@ export default function Home() {
 
           <div className="lower-grid">
             <section>
-              <div className="section-heading compact"><div><h2>Your subjects</h2><p>Subjects currently in the vault.</p></div><Link href="/subjects" className="text-button">Browse <ArrowRight size={16} /></Link></div>
-              <div className="subject-list">
-                {liveSubjects.map((subject) => (
-                  <Link className="subject-row" href={`/subjects/${encodeURIComponent(subject.name)}`} key={subject.name}>
-                    <span className={`subject-icon ${subject.color}`}><FolderSimple size={19} weight="fill" /></span>
-                    <span className="subject-info"><strong>{subject.name}</strong><small>{subject.count}</small></span>
-                    <span className="subject-progress"><span style={{ width: subject.progress }} /></span>
-                    <ArrowRight size={17} />
-                  </Link>
-                ))}
-                {liveSubjects.length === 0 && <div className="empty-state"><FolderSimple size={24} /><p>No subjects have been added yet.</p></div>}
-              </div>
+              <div className="section-heading compact"><div><h2>Keep studying</h2><p>Open a subject folder to continue.</p></div><Link href="/subjects" className="text-button">Library <ArrowRight size={16} /></Link></div>
+              <div className="empty-state"><Books size={24} /><p>Your live study activity will appear here as you use the vault.</p></div>
             </section>
-            <section className="activity-panel"><div className="section-heading compact"><div><h2>Keep studying</h2><p>Open a subject to continue.</p></div><Books size={22} /></div><div className="empty-state"><Books size={24} /><p>Your live study activity will appear here as you use the vault.</p></div></section>
+            <section className="activity-panel"><div className="section-heading compact"><div><h2>Study material</h2><p>Recently added files across all subjects.</p></div><CalendarBlank size={22} /></div><div className="empty-state"><Books size={24} /><p>Your live study activity will appear here as you use the vault.</p></div></section>
           </div>
         </div>
       </section>

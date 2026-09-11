@@ -7,15 +7,9 @@ import { useSupabase } from "@/lib/supabase";
 
 type SavedMaterial = { id: string; title: string; description: string; subject: string; type: string };
 
-const fallbackBookmarks: SavedMaterial[] = [
-  { id: "electromagnetic-induction", title: "Electromagnetic Induction", description: "Faraday's law, Lenz's law, and practical applications.", subject: "Physics", type: "PDF" },
-  { id: "organic-chemistry-reactions", title: "Organic Chemistry Reactions", description: "A quick reference for the reaction families worth revisiting.", subject: "Chemistry", type: "PDF" },
-  { id: "calculus-limits", title: "Calculus: Limits & Continuity", description: "Core concepts and worked examples for your next practice session.", subject: "Mathematics", type: "PPT" },
-];
-
 export default function BookmarksPage() {
   const [query, setQuery] = useState("");
-  const [items, setItems] = useState(fallbackBookmarks);
+  const [items, setItems] = useState<SavedMaterial[]>([]);
   const [message, setMessage] = useState("");
   const { supabase } = useSupabase();
 
