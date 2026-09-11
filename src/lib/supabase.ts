@@ -6,6 +6,14 @@ function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+  // The mock client below silently breaks login/logout. In production builds,
+  // fail loudly instead of shipping a client that can never authenticate.
+  if (process.env.NODE_ENV === "production" && (!url || !anonKey)) {
+    throw new Error(
+      "Supabase client env vars are missing. NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set at build time (e.g. in .env.production) so they are inlined into the browser bundle.",
+    );
+  }
+
   // If env vars are not set, create a mock client for development
   if (!url || !anonKey) {
     const mockSupabase = {
