@@ -54,14 +54,16 @@ export default function MaterialPage() {
         if (bookmark) setSaved(true);
       }
       if (data.file_key) {
-        const signedResponse = await fetch("/api/files/sign", {
+        setFileUrl(`/api/files/stream`);
+        const streamResponse = await fetch("/api/files/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ fileKey: data.file_key, disposition: "inline" }),
         });
-        if (signedResponse.ok) {
-          const signedData = await signedResponse.json() as { url?: string };
-          if (signedData.url) setFileUrl(signedData.url);
+        if (!streamResponse.ok) {
+          const failure = await streamResponse.json().catch(() => null) as { error?: string } | null;
+          setSaveMessage(failure?.error ?? "Unable to open the file. Please try again.");
+          setFileUrl("");
         }
       }
       if (userResult.user) await supabase.from("activity_logs").insert({ user_id: userResult.user.id, action: "viewed", resource_type: "material", resource_id: params.id });
@@ -135,7 +137,7 @@ export default function MaterialPage() {
           {saveMessage && <p className="save-message">{saveMessage}</p>}
           <section className="viewer-frame">
             <div className="viewer-toolbar"><span><FilePdf size={17} weight="fill" /> {material.file_name}</span><span>Private preview</span></div>
-            {fileUrl && material.mime_type.includes("pdf") ? <div className="pdf-viewer" ref={viewerRef}><Document file={fileUrl} onLoadSuccess={({ numPages: pages }) => { setNumPages(pages); setPageNumber(1); }} loading={<div className="viewer-placeholder"><Sparkle size={28} weight="fill" /><h2>Loading document...</h2></div>} error={<div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>Unable to load this PDF</h2><p>Check the R2 CORS policy and signed URL configuration.</p></div>}><Page pageNumber={pageNumber} width={Math.max(320, Math.min(viewerWidth - 40, 900)) * scale} renderAnnotationLayer renderTextLayer /></Document><div className="pdf-controls"><button onClick={() => setPageNumber((page) => Math.max(1, page - 1))} disabled={pageNumber <= 1}>Previous</button><span>Page {pageNumber} of {numPages || "..."}</span><button onClick={() => setPageNumber((page) => Math.min(numPages, page + 1))} disabled={!numPages || pageNumber >= numPages}>Next</button><button onClick={() => setScale((value) => Math.max(.75, value - .1))}>-</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale((value) => Math.min(1.6, value + .1))}>+</button></div></div> : <div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>No preview available</h2><p>This material can be downloaded once a signed link is ready.</p></div>}
+            {fileUrl && material.mime_type.includes("pdf") ? <div className="pdf-viewer" ref={viewerRef}><Document file={fileUrl} onLoadSuccess={({ numPages: pages }) => { setNumPages(pages); setPageNumber(1); }} loading={<div className="viewer-placeholder"><Sparkle size={28} weight="fill" /><h2>Loading document...</h2></div>} error={<div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>Unable to load this PDF</h2><p>The file stream could not be opened. Try reloading the page.</p></div>}><Page pageNumber={pageNumber} width={Math.max(320, Math.min(viewerWidth - 40, 900)) * scale} renderAnnotationLayer renderTextLayer /></Document><div className="pdf-controls"><button onClick={() => setPageNumber((page) => Math.max(1, page - 1))} disabled={pageNumber <= 1}>Previous</button><span>Page {pageNumber} of {numPages || "..."}</span><button onClick={() => setPageNumber((page) => Math.min(numPages, page + 1))} disabled={!numPages || pageNumber >= numPages}>Next</button><button onClick={() => setScale((value) => Math.max(.75, value - .1))}>-</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale((value) => Math.min(1.6, value + .1))}>+</button></div></div> : <div className="viewer-placeholder"><FilePdf size={42} weight="thin" /><h2>No preview available</h2><p>This material can be downloaded once the file stream is ready.</p></div>}
           </section>
         </div>
       </section>
