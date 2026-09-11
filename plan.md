@@ -1,3 +1,104 @@
+# StudyVault — Development Plan & Status
+
+> Last updated: 2026-09-12
+
+A private, invite-only study-material portal for a small trusted group, living at
+**[notes.sidcandev.online](https://notes.sidcandev.online)**.
+
+This document tracks what has been built, what changed along the way, and what remains.
+The original design notes are preserved at the bottom in [Archive](#archive-original-design-notes).
+
+---
+
+## 1. Current state — ✅ Live in production
+
+The MVP described in the original plan is **built and deployed** on Cloudflare Workers.
+
+| Area | Status |
+|---|---|
+| Auth (login, approval-only signup, sessions, protected routes) | ✅ Shipped |
+| Roles: `user` / `uploader` / `super_admin` with RLS | ✅ Shipped |
+| Library: Year → Semester → Subject → Folder | ✅ Shipped |
+| Upload (streamed through app into private R2, 100 MB cap, progress) | ✅ Shipped |
+| In-browser PDF viewer (react-pdf, page nav, zoom) | ✅ Shipped |
+| Downloads via authenticated stream route | ✅ Shipped |
+| Bookmarks, activity audit log, search | ✅ Shipped |
+| Admin workspace (materials, subjects, users, access requests, activity, settings) | ✅ Shipped |
+| Access-request approval workflow (encrypted credentials at rest) | ✅ Shipped |
+| Deployment: Cloudflare Workers + OpenNext, custom domain | ✅ Shipped |
+| CI: GitHub Actions (lint + typecheck + build) | ✅ Shipped |
+| README, MIT license, `.env.example` | ✅ Shipped |
+
+## 2. Architecture as built
+
+```text
+                 notes.sidcandev.online
+                 Cloudflare Worker (OpenNext)
+                           |
+        +------------------+------------------+
+        |                  |                  |
+   Next.js 16 App    Supabase Auth      API routes
+   (App Router)      (sessions, RLS)    (auth-gated)
+        |                  |                  |
+        |            PostgreSQL             R2 binding
+        |            profiles, subjects,    STUDYVAULT_BUCKET
+        |            categories, materials, (uploads, streams,
+        |            bookmarks, activity,    deletes, stats)
+        |            access_requests
+        |
+   PDF viewer (react-pdf) ← /api/files/stream (Range support)
+```
+
+Key implementation choices that differ from the original plan:
+
+- **Hosting is Cloudflare Workers via OpenNext** — not Vercel. `npm run build` produces the worker; `npm run cf:deploy` ships it.
+- **Storage uses the R2 bucket binding** (`STUDYVAULT_BUCKET` in `wrangler.jsonc`). The S3-API-key approach was removed in September 2026 after the keys lost bucket access: uploads, streaming, deletes, and stats all go through the binding now. No `@aws-sdk/*` dependencies remain.
+- **File serving is an authenticated POST route** (`/api/files/stream`) instead of short-lived presigned URLs. The route enforces login (via middleware), verifies the file key against the `materials` table, and supports HTTP Range requests so the PDF viewer can seek.
+- **Signup is an access request**, not account creation: credentials are stored encrypted (`access_requests` + `ACCESS_REQUEST_ENCRYPTION_KEY`) and only promoted to a real auth user when a Super Admin approves.
+
+## 3. Recent fixes worth remembering
+
+| Date | Fix |
+|---|---|
+| 2026-09-11 | **Production login broken**: a CI build without `.env` files inlined `NEXT_PUBLIC_*` as `undefined`, shipping the dev mock Supabase client to the browser. Fixed by keeping the vars as dashboard **build variables** + `keep_vars: true` in `wrangler.jsonc`, and making production builds **throw** if the vars are missing instead of silently degrading. |
+| 2026-09-11 | **Material delete dead**: delete route still used the dead S3 keys and threw a non-JSON 500 that the client swallowed. Migrated to the bucket binding with JSON errors; client now always shows a status message. |
+| 2026-09-11 | **R2 key retirement**: `/api/files/sign` (presigned URLs) and `/api/storage` (ListObjectsV2) replaced with binding-backed stream/list routes. All four `R2_*` secrets deleted from the Worker. |
+| 2026-09-12 | Repo polish: new README with screenshot, MIT license, tracked `.env.example`, GitHub Actions CI. |
+
+## 4. Known gaps / technical debt
+
+- [ ] **`/dashboard` and `/blog` are dead routes** — they render empty shells. Remove or build them out.
+- [ ] **Storage widget fails silently** — if `/api/storage` errors, the home page just hides stats instead of showing a friendly state.
+- [ ] **Role changes are client-side enforced only** — `/admin/users` updates `profiles.role` directly from the browser; there is no server-side route checking that the caller is a Super Admin. RLS is the only backstop.
+- [ ] **Expired sessions are ungraceful** — a stale cookie can leave users in redirect limbo instead of a clean "session expired" message.
+- [ ] **`/api/files/stream` has no Range passthrough on errors** — the `Content-Range`/206 path is implemented but untested against real PDF viewers on partial content.
+- [ ] **No automated tests** — CI runs lint + typecheck + build, but there are zero unit/integration tests.
+- [ ] **Upload lacks a file-exists/idempotency guard** — double-submit can create two R2 objects.
+
+## 5. Roadmap
+
+### Next up (near-term)
+1. Remove or implement `/dashboard` and `/blog`.
+2. Server-side guard for role changes (`/api/admin/roles` route + RLS tightening).
+3. Graceful session-expiry handling across the app.
+4. Friendly storage-widget error state.
+
+### Later (nice-to-haves)
+- Shareable expiring links (GET route with signed tokens).
+- Material versioning + tags.
+- Download/view statistics dashboard.
+- DOCX/PPTX preview (currently download-only).
+- PWA / offline access.
+- Automatic backups of R2 + Postgres.
+- Rate limiting on auth and upload endpoints.
+
+---
+
+## Archive — original design notes
+
+<details>
+<summary>Click to expand the original planning document (pre-implementation)</summary>
+
 # Notes & Materials Portal — Development Plan
 
 ## 1. Project Goal
@@ -1152,102 +1253,102 @@ Connect:
 
 ## Phase 1 — Foundation
 
-- [ ] Create repository
-- [ ] Create Next.js project
-- [ ] Configure Tailwind
-- [ ] Configure UI components
-- [ ] Create project structure
-- [ ] Configure environment variables
+- [x] Create repository
+- [x] Create Next.js project
+- [x] Configure Tailwind
+- [x] Configure UI components
+- [x] Create project structure
+- [x] Configure environment variables
 
 ## Phase 2 — Authentication
 
-- [ ] Supabase Auth
-- [ ] Login
-- [ ] Logout
-- [ ] Protected routes
-- [ ] User profiles
-- [ ] Role system
+- [x] Supabase Auth
+- [x] Login
+- [x] Logout
+- [x] Protected routes
+- [x] User profiles
+- [x] Role system
 
 ## Phase 3 — Database
 
-- [ ] Profiles table
-- [ ] Subjects table
-- [ ] Categories table
-- [ ] Materials table
-- [ ] Bookmarks table
-- [ ] Activity logs
-- [ ] RLS policies
+- [x] Profiles table
+- [x] Subjects table
+- [x] Categories table
+- [x] Materials table
+- [x] Bookmarks table
+- [x] Activity logs
+- [x] RLS policies
 
 ## Phase 4 — Storage
 
-- [ ] Create R2 bucket
-- [ ] Keep bucket private
-- [ ] Server-side upload
-- [ ] Signed URLs
-- [ ] File deletion
-- [ ] File metadata
+- [x] Create R2 bucket
+- [x] Keep bucket private
+- [x] Server-side upload
+- [x] Signed URLs → replaced by authenticated stream route (see §2 of current plan)
+- [x] File deletion
+- [x] File metadata
 
 ## Phase 5 — User Experience
 
-- [ ] Dashboard
-- [ ] Subject browsing
-- [ ] Category browsing
-- [ ] Material cards
-- [ ] Search
-- [ ] Material detail page
-- [ ] Bookmarks
+- [x] Dashboard
+- [x] Subject browsing
+- [x] Category browsing
+- [x] Material cards
+- [x] Search
+- [x] Material detail page
+- [x] Bookmarks
 
 ## Phase 6 — Viewer
 
-- [ ] PDF.js
-- [ ] Page navigation
-- [ ] Zoom
+- [x] PDF.js (via react-pdf)
+- [x] Page navigation
+- [x] Zoom
 - [ ] Search inside PDF
 - [ ] Fullscreen
-- [ ] Download
-- [ ] Mobile optimization
+- [x] Download
+- [x] Mobile optimization
 
 ## Phase 7 — Admin
 
-- [ ] Admin dashboard
-- [ ] Material management
-- [ ] Upload page
-- [ ] Edit material
-- [ ] Delete material
-- [ ] Subject management
-- [ ] Category management
-- [ ] User management
-- [ ] Role management
+- [x] Admin dashboard
+- [x] Material management
+- [x] Upload page
+- [x] Edit material
+- [x] Delete material
+- [x] Subject management
+- [x] Category management
+- [x] User management
+- [x] Role management
 
 ## Phase 8 — Uploader Role
 
-- [ ] Uploader dashboard
-- [ ] Upload permissions
-- [ ] Material editing
-- [ ] Material deletion
-- [ ] Restrict user management
-- [ ] Restrict role management
-- [ ] Server-side authorization
+- [x] Uploader dashboard
+- [x] Upload permissions
+- [x] Material editing
+- [x] Material deletion
+- [x] Restrict user management
+- [x] Restrict role management
+- [ ] Server-side authorization for role changes (client-enforced only — see §4)
 
 ## Phase 9 — Security
 
-- [ ] RLS
-- [ ] Private R2 bucket
-- [ ] Signed URLs
-- [ ] Server-side role checks
-- [ ] File validation
+- [x] RLS
+- [x] Private R2 bucket
+- [x] Signed URLs → replaced by authenticated stream route
+- [x] Server-side role checks (API routes)
+- [x] File validation
 - [ ] Rate limiting where appropriate
-- [ ] Secure environment variables
+- [x] Secure environment variables
 
 ## Phase 10 — Deployment
 
-- [ ] Production build
-- [ ] Environment variables
-- [ ] Domain configuration
-- [ ] HTTPS
-- [ ] Production testing
+- [x] Production build
+- [x] Environment variables
+- [x] Domain configuration
+- [x] HTTPS
+- [x] Production testing
 - [ ] Backup strategy
-- [ ] Usage monitoring
+- [x] Usage monitoring (storage stats)
 
 ---
 
@@ -1255,44 +1356,44 @@ Connect:
 
 ## User
 
-- [ ] Can log in
-- [ ] Can view materials
-- [ ] Can search
-- [ ] Can open PDF viewer
-- [ ] Can download
-- [ ] Cannot upload
-- [ ] Cannot access admin
-- [ ] Cannot manage users
+- [x] Can log in
+- [x] Can view materials
+- [x] Can search
+- [x] Can open PDF viewer
+- [x] Can download
+- [x] Cannot upload
+- [x] Cannot access admin
+- [x] Cannot manage users
 
 ## Uploader
 
-- [ ] Can log in
-- [ ] Can access uploader dashboard
-- [ ] Can upload
-- [ ] Can edit materials
-- [ ] Can delete materials
-- [ ] Cannot manage users
-- [ ] Cannot change roles
-- [ ] Cannot access Super Admin settings
+- [x] Can log in
+- [x] Can access uploader dashboard
+- [x] Can upload
+- [x] Can edit materials
+- [x] Can delete materials
+- [x] Cannot manage users
+- [x] Cannot change roles
+- [x] Cannot access Super Admin settings
 
 ## Super Admin
 
-- [ ] Full access
-- [ ] Can manage users
-- [ ] Can assign roles
-- [ ] Can manage materials
-- [ ] Can manage subjects/categories
-- [ ] Can view activity
+- [x] Full access
+- [x] Can manage users
+- [x] Can assign roles
+- [x] Can manage materials
+- [x] Can manage subjects/categories
+- [x] Can view activity
 
 ## Security
 
-- [ ] Unauthenticated users cannot access private content
-- [ ] Direct file URLs do not expose permanent public storage
-- [ ] R2 bucket is private
-- [ ] Role checks happen server-side
-- [ ] Database RLS is enabled
-- [ ] Upload restrictions work
-- [ ] Deleted files are removed from storage
+- [x] Unauthenticated users cannot access private content
+- [x] Direct file URLs do not expose permanent public storage
+- [x] R2 bucket is private
+- [x] Role checks happen server-side (API routes; role *changes* still need a server guard)
+- [x] Database RLS is enabled
+- [x] Upload restrictions work
+- [x] Deleted files are removed from storage
 
 ---
 
@@ -1302,10 +1403,10 @@ Do not build these initially unless needed.
 
 Possible future additions:
 
-- [ ] Favorites
+- [x] Favorites (bookmarks)
 - [ ] Recently viewed
 - [ ] Download statistics
-- [ ] View statistics
+- [x] View statistics (activity log)
 - [ ] Activity notifications
 - [ ] Announcements
 - [ ] Comments
@@ -1353,7 +1454,7 @@ Private R2 storage
 Supabase RLS
 ```
 
-Everything else can come later.
+**Status: shipped.** The MVP is live at notes.sidcandev.online.
 
 ---
 
@@ -1446,3 +1547,5 @@ The finished website should feel like a private study library:
 ```
 
 Only approved people get access, Uploaders can help manage content without receiving full administrative privileges, and the Super Admin retains complete control.
+
+</details>
