@@ -66,11 +66,12 @@ export default function UploadMaterialPage() {
   const activeCategory = categories.find((category) => category.id === categoryId) ?? null;
   const selectedCategoryId = activeCategory?.id ?? "";
 
-  function uploadToR2(url: string, uploadFile: File) {
-    return new Promise<void>((resolve, reject) => {
+  function uploadToVault(uploadFile: File) {
+    return new Promise<{ fileKey: string }>((resolve, reject) => {
       const request = new XMLHttpRequest();
-      request.open("PUT", url);
+      request.open("POST", "/api/files/upload-content");
       request.setRequestHeader("Content-Type", uploadFile.type || "application/octet-stream");
+      request.setRequestHeader("X-File-Name", encodeURIComponent(uploadFile.name));
       request.timeout = 15 * 60 * 1000;
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
@@ -79,10 +80,21 @@ export default function UploadMaterialPage() {
       request.onload = () => {
         if (request.status >= 200 && request.status < 300) {
           setUploadProgress(100);
-          resolve();
+          try {
+            const result = JSON.parse(request.responseText) as { fileKey?: string };
+            if (result.fileKey) resolve({ fileKey: result.fileKey });
+            else reject(new Error("The file was received, but its storage location could not be confirmed."));
+          } catch {
+            reject(new Error("The file was received, but its storage location could not be confirmed."));
+          }
           return;
         }
-        reject(new Error(`R2 returned ${request.status}.`));
+        try {
+          const result = JSON.parse(request.responseText || "{}") as { error?: string };
+          reject(new Error(result.error ?? `The upload was rejected (${request.status}).`));
+        } catch {
+          reject(new Error(`The upload was rejected (${request.status}).`));
+        }
       };
       request.onerror = () => reject(new Error("The upload connection was interrupted."));
       request.ontimeout = () => reject(new Error("The upload timed out. Please try again."));
@@ -97,23 +109,15 @@ export default function UploadMaterialPage() {
     setUploadProgress(0);
     setStatus("Preparing secure upload...");
     try {
-      const signResponse = await fetch("/api/files/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, contentType: file.type || "application/octet-stream" }),
-      });
-      const signed = await signResponse.json() as { url?: string; fileKey?: string; error?: string };
-      if (!signResponse.ok || !signed.url || !signed.fileKey) throw new Error(signed.error ?? "Unable to prepare the upload.");
-
       setStatus("Uploading file...");
-      await uploadToR2(signed.url, file);
+      const uploaded = await uploadToVault(file);
       setStatus("Saving material details...");
       const { data: material, error } = await supabase.from("materials").insert({
         title: title.trim(),
         subject_id: selectedSubjectId,
         category_id: selectedCategoryId,
         file_name: file.name,
-        file_key: signed.fileKey,
+        file_key: uploaded.fileKey,
         file_size: file.size,
         mime_type: file.type || "application/octet-stream",
         uploaded_by: (await supabase.auth.getUser()).data.user?.id,
