@@ -16,6 +16,7 @@ export default function UploadMaterialPage() {
   const [categoryId, setCategoryId] = useState("");
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [status, setStatus] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(true);
   const [allowed, setAllowed] = useState(false);
@@ -65,45 +66,71 @@ export default function UploadMaterialPage() {
   const activeCategory = categories.find((category) => category.id === categoryId) ?? null;
   const selectedCategoryId = activeCategory?.id ?? "";
 
+  function uploadToR2(url: string, uploadFile: File) {
+    return new Promise<void>((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("PUT", url);
+      request.setRequestHeader("Content-Type", uploadFile.type || "application/octet-stream");
+      request.timeout = 15 * 60 * 1000;
+      request.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        setUploadProgress(Math.round((event.loaded / event.total) * 100));
+      };
+      request.onload = () => {
+        if (request.status >= 200 && request.status < 300) {
+          setUploadProgress(100);
+          resolve();
+          return;
+        }
+        reject(new Error(`R2 returned ${request.status}.`));
+      };
+      request.onerror = () => reject(new Error("The upload connection was interrupted."));
+      request.ontimeout = () => reject(new Error("The upload timed out. Please try again."));
+      request.send(uploadFile);
+    });
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || !selectedSubjectId || !selectedCategoryId) return setStatus("Choose a file, title, subject, and folder.");
+    if (!file || !title.trim() || !selectedSubjectId || !selectedCategoryId) return setStatus("Choose a file, title, subject, and folder.");
     setBusy(true);
+    setUploadProgress(0);
     setStatus("Preparing secure upload...");
-    const signResponse = await fetch("/api/files/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName: file.name, contentType: file.type || "application/octet-stream" }),
-    });
-    const signed = await signResponse.json() as { url?: string; fileKey?: string; error?: string };
-    if (!signResponse.ok || !signed.url || !signed.fileKey) {
-      setStatus(signed.error ?? "Unable to prepare the upload.");
+    try {
+      const signResponse = await fetch("/api/files/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, contentType: file.type || "application/octet-stream" }),
+      });
+      const signed = await signResponse.json() as { url?: string; fileKey?: string; error?: string };
+      if (!signResponse.ok || !signed.url || !signed.fileKey) throw new Error(signed.error ?? "Unable to prepare the upload.");
+
+      setStatus("Uploading file...");
+      await uploadToR2(signed.url, file);
+      setStatus("Saving material details...");
+      const { data: material, error } = await supabase.from("materials").insert({
+        title: title.trim(),
+        subject_id: selectedSubjectId,
+        category_id: selectedCategoryId,
+        file_name: file.name,
+        file_key: signed.fileKey,
+        file_size: file.size,
+        mime_type: file.type || "application/octet-stream",
+        uploaded_by: (await supabase.auth.getUser()).data.user?.id,
+      }).select("id").single();
+      if (error) throw new Error("The file uploaded, but its material details could not be saved.");
+      if (material) {
+        const { data: currentUser } = await supabase.auth.getUser();
+        await supabase.from("activity_logs").insert({ user_id: currentUser.user?.id, action: "uploaded", resource_type: "material", resource_id: material.id, metadata: { file_name: file.name } });
+      }
+      setStatus("Material uploaded successfully.");
+      setFile(null);
+      setTitle("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "The upload could not be completed. Please try again.");
+    } finally {
       setBusy(false);
-      return;
     }
-    const uploadResponse = await fetch(signed.url, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
-    if (!uploadResponse.ok) {
-      setStatus("The file could not be uploaded to R2.");
-      setBusy(false);
-      return;
-    }
-    const { data: material, error } = await supabase.from("materials").insert({
-      title,
-      subject_id: selectedSubjectId,
-      category_id: selectedCategoryId,
-      file_name: file.name,
-      file_key: signed.fileKey,
-      file_size: file.size,
-      mime_type: file.type || "application/octet-stream",
-      uploaded_by: (await supabase.auth.getUser()).data.user?.id,
-    }).select("id").single();
-    if (!error && material) {
-      const { data: currentUser } = await supabase.auth.getUser();
-      await supabase.from("activity_logs").insert({ user_id: currentUser.user?.id, action: "uploaded", resource_type: "material", resource_id: material.id, metadata: { file_name: file.name } });
-    }
-    setStatus(error ? "The file uploaded, but metadata could not be saved." : "Material uploaded successfully.");
-    if (!error) { setFile(null); setTitle(""); }
-    setBusy(false);
   }
 
   if (checking) return <main className="loading-screen"><Sparkle size={20} weight="fill" /><span>Checking uploader access...</span></main>;
@@ -123,7 +150,7 @@ export default function UploadMaterialPage() {
             <label>Subject<select value={selectedSubjectId} onChange={(event) => { setSubjectId(event.target.value); setCategoryId(""); }} required><option value="">{subjectOptions.length ? "Choose a subject" : `No subjects in Year ${year} · ${semesterLabel(semester)}`}{subjectOptions.length ? "" : " — add one first"}</option>{subjectOptions.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label>
             <label>Folder<select value={selectedCategoryId} onChange={(event) => setCategoryId(event.target.value)} required disabled={!selectedSubjectId}><option value="">{selectedSubjectId ? "Choose a folder" : "Choose a subject first"}</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
             <label className="file-picker">File<input type="file" accept=".pdf,.ppt,.pptx,.doc,.docx,.zip" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><span><FileArrowUp size={25} />{file ? file.name : "Choose a file from your device"}<small>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : "PDF, PPT, DOC, or ZIP"}</small></span></label>
-            <button className="primary-button upload-submit" disabled={busy}>{busy ? "Uploading..." : <><UploadSimple size={18} /> Upload securely</>}</button>
+            <div className="upload-action-row"><button className="primary-button upload-submit" disabled={busy}>{busy ? "Uploading..." : <><UploadSimple size={18} /> Upload securely</>}</button>{busy && <span className="upload-progress" role="status" aria-live="polite">{uploadProgress}%</span>}</div>
             {status && <p className={`upload-status ${status.includes("successfully") ? "success" : ""}`}>{status.includes("successfully") && <Check size={17} weight="bold" />}{status}</p>}
           </form>
         </div>
