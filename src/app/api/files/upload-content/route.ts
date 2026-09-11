@@ -1,19 +1,21 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { createServerClient } from "@supabase/ssr";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 const maxUploadSize = 100 * 1024 * 1024;
 
-export async function POST(request: Request) {
-  const config = {
-    accountId: process.env.R2_ACCOUNT_ID,
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-    bucket: process.env.R2_BUCKET_NAME,
-  };
-  if (Object.values(config).some((value) => !value)) return NextResponse.json({ error: "R2 storage is not configured." }, { status: 503 });
+type StudyVaultBucket = {
+  put(key: string, value: ArrayBuffer, options: { httpMetadata: { contentType: string } }): Promise<unknown>;
+};
 
+declare global {
+  interface CloudflareEnv {
+    STUDYVAULT_BUCKET: StudyVaultBucket;
+  }
+}
+
+export async function POST(request: Request) {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > maxUploadSize) return NextResponse.json({ error: "Files must be 100 MB or smaller." }, { status: 413 });
   const encodedName = request.headers.get("x-file-name");
@@ -42,19 +44,12 @@ export async function POST(request: Request) {
 
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-120);
   const fileKey = `materials/${crypto.randomUUID()}-${safeName}`;
-  const client = new S3Client({
-    region: "auto",
-    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId: config.accessKeyId!, secretAccessKey: config.secretAccessKey! },
-  });
 
   try {
-    await client.send(new PutObjectCommand({
-      Bucket: config.bucket,
-      Key: fileKey,
-      Body: new Uint8Array(fileBytes),
-      ContentType: request.headers.get("content-type") || "application/octet-stream",
-    }));
+    const { env } = await getCloudflareContext({ async: true });
+    await env.STUDYVAULT_BUCKET.put(fileKey, fileBytes, {
+      httpMetadata: { contentType: request.headers.get("content-type") || "application/octet-stream" },
+    });
   } catch {
     return NextResponse.json({ error: "R2 could not store the file. Please try again." }, { status: 502 });
   }
