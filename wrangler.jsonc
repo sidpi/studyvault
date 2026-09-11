@@ -2,6 +2,9 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "studyvault",
   "main": ".open-next/worker.js",
+  // Keep plain-text variables that were added in the dashboard (e.g. NEXT_PUBLIC_SUPABASE_*),
+  // otherwise every `wrangler deploy` from this config deletes them.
+  "keep_vars": true,
   "compatibility_date": "2026-08-26",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
