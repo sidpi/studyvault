@@ -8,9 +8,12 @@
 [![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](https://react.dev)
 [![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20Postgres-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20R2-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
-[![License](https://img.shields.io/badge/license-private-red)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/sidpi/studyvault/actions/workflows/ci.yml/badge.svg)](https://github.com/sidpi/studyvault/actions/workflows/ci.yml)
 
 **Live at [notes.sidcandev.online](https://notes.sidcandev.online)**
+
+![StudyVault app screenshot](public/app-login.png)
 
 </div>
 
@@ -108,6 +111,8 @@ Environment checklist for production:
 - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must exist **at build time** (e.g. as plain-text build variables in the Workers dashboard or CI) — the client bundle fails the build without them
 - `SUPABASE_SERVICE_ROLE_KEY` and `ACCESS_REQUEST_ENCRYPTION_KEY` as Worker secrets
 - Your custom domain routed in `wrangler.jsonc`
+
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, and build on every push — add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as [repository secrets](https://github.com/sidpi/studyvault/settings/secrets/actions) so the build step passes.
 
 ## 🗺️ Routes
 
